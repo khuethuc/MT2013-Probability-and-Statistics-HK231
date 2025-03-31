@@ -1,0 +1,335 @@
+---
+title: "Assignment_Group_6"
+author: "Group 6"
+date: "2023-11-13"
+output: html_document
+---
+**1. Import data**
+
+**1.1. Import file **
+```{r}
+# Import file
+CPU_data = read.csv("~/Desktop/XSTK Assignment/work/Intel_CPUs.csv")
+head(CPU_data, 3)
+```
+
+**1.2. Import libraries **
+```{r}
+# Import libraries
+library(dplyr)
+library(stringr)
+library(GGally)
+library(corrplot)
+library(caTools)
+library(MASS)
+library(car)
+library(e1071)
+library(nortest)
+```
+
+**2. Data cleaning** 
+
+**2.1. Removing unused data**
+
+Checking how many missing values in each variable.
+```{r}
+# Checking missing values
+apply(is.na(CPU_data), 2, sum)
+```
+
+Values of Processor_Graphics_, Support_4k, and OpenGL_Support are missing in all rows, therefore, we remove columns of these variables. Moreover, we will not use Product_Collection, Vertical_Segment, Processor_Number, Status, Launch_Date Instruction_Set_Extensions, PCI_Express_Configurations_, Max_Resolution_eDP_Integrated_Flat_Panel, Max_Resolution_DP, Graphics_Output, Max_Resolution_HDMI, Memory_Types, Bus_Speed, Cache, DirectX_Support, PCI_Express_Revision, Conflict_Free to analyse, therefore, we also remove these variables.
+```{r}
+# Remove unused variables
+delete = c("OpenGL_Support", "Support_4k", "Processor_Graphics_", "Product_Collection", "Vertical_Segment", "Processor_Number", "Status", "Launch_Date","nb_of_Threads", "Instruction_Set_Extensions","PCI_Express_Configurations_","Max_Resolution_eDP_Integrated_Flat_Panel","Max_Resolution_DP","Graphics_Output","Max_Resolution_HDMI","Memory_Types","Bus_Speed","Cache","DirectX_Support","Max_nb_of_PCI_Express_Lanes", "Max_nb_of_Memory_Channels", "PCI_Express_Revision", "Conflict_Free")
+
+CPU_data <- CPU_data[, !names(CPU_data) %in% delete, drop = FALSE]
+```
+
+**2.2. Filling missing values**
+
+We convert space and escape sequence.
+```{r}
+# Convert " " and "\n- " to NA
+CPU_data[(CPU_data == "") | (CPU_data == "\n- ")] <- NA
+```
+
+We remove unit of some numerical variables and transform them to numeric form.
+```{r}
+# Remove unit of numerical variables and transform to numeric form
+CPU_data$Lithography <- as.numeric(sub("nm", "", CPU_data$Lithography))
+CPU_data$Max_Turbo_Frequency <- as.numeric(sub("GHz", "", CPU_data$Max_Turbo_Frequency))
+CPU_data$TDP <- as.numeric(sub("W", "", CPU_data$TDP))
+CPU_data$Max_Memory_Size <- as.numeric(sub("GB", "", CPU_data$Max_Memory_Size))
+CPU_data$Max_Memory_Bandwidth <- as.numeric(sub("GB/s", "", CPU_data$Max_Memory_Bandwidth))
+CPU_data$Graphics_Base_Frequency <- as.numeric(sub("MHz", "", CPU_data$Graphics_Base_Frequency))
+CPU_data$Graphics_Video_Max_Memory <- as.numeric(sub("GB", "", CPU_data$Graphics_Video_Max_Memory))
+CPU_data$T <- as.numeric(sub("°C", "", CPU_data$T))
+```
+
+There are some numerical variables that need to be converted unit before removing units and transform to numeric form.
+```{r}
+# Convert units for Graphics_Max_Dynamic_Frequency
+subset_GHz <- CPU_data[grepl("GHz", CPU_data$Graphics_Max_Dynamic_Frequency, ignore.case = TRUE) , ]
+CPU_data <- CPU_data[!grepl("GHz", CPU_data$Graphics_Max_Dynamic_Frequency, ignore.case = TRUE), ]
+
+subset_GHz$Graphics_Max_Dynamic_Frequency <- gsub("GHz", "",subset_GHz$Graphics_Max_Dynamic_Frequency,fixed = TRUE)
+subset_GHz$Graphics_Max_Dynamic_Frequency <- as.numeric(subset_GHz$Graphics_Max_Dynamic_Frequency)
+subset_GHz$Graphics_Max_Dynamic_Frequency <- subset_GHz$Graphics_Max_Dynamic_Frequency*(1000)
+
+CPU_data$Graphics_Max_Dynamic_Frequency <- gsub("MHz", "",CPU_data$Graphics_Max_Dynamic_Frequency,fixed = TRUE)
+CPU_data$Graphics_Max_Dynamic_Frequency <- as.numeric(CPU_data$Graphics_Max_Dynamic_Frequency)
+
+CPU_data <- bind_rows(CPU_data,subset_GHz)
+
+# Convert units for Processor_Base_Frequency
+subset_GHz <- CPU_data[grepl("GHz", CPU_data$Processor_Base_Frequency, ignore.case = TRUE) , ]
+CPU_data <- CPU_data[!grepl("GHz", CPU_data$Processor_Base_Frequency, ignore.case = TRUE), ]
+
+subset_GHz$Processor_Base_Frequency <- gsub("GHz", "",subset_GHz$Processor_Base_Frequency,fixed = TRUE)
+
+subset_GHz$Processor_Base_Frequency <- as.numeric(subset_GHz$Processor_Base_Frequency)
+subset_GHz$Processor_Base_Frequency <- subset_GHz$Processor_Base_Frequency*(1000)
+
+CPU_data$Processor_Base_Frequency <- gsub("MHz", "",CPU_data$Processor_Base_Frequency,fixed = TRUE)
+CPU_data$Processor_Base_Frequency <- as.numeric(CPU_data$Processor_Base_Frequency)
+
+CPU_data <- bind_rows(CPU_data,subset_GHz)
+```
+
+We fill missing values of numerical variables by their mean values.
+```{r}
+# Filling missing values for numerical variables
+CPU_data$Lithography[is.na(CPU_data$Lithography)] = mean(CPU_data$Lithography, na.rm=T)
+CPU_data$nb_of_Cores[is.na(CPU_data$nb_of_Cores)] = mean(CPU_data$nb_of_Cores, na.rm=T)
+
+CPU_data$Max_Turbo_Frequency[is.na(CPU_data$Max_Turbo_Frequency)] = mean(CPU_data$Max_Turbo_Frequency, na.rm=T)
+CPU_data$TDP[is.na(CPU_data$TDP)] = mean(CPU_data$TDP, na.rm=T)
+CPU_data$Max_Memory_Size[is.na(CPU_data$Max_Memory_Size)] = mean(CPU_data$Max_Memory_Size, na.rm=T)
+CPU_data$Max_Memory_Bandwidth[is.na(CPU_data$Max_Memory_Bandwidth)] = mean(CPU_data$Max_Memory_Bandwidth, na.rm=T)
+CPU_data$Graphics_Base_Frequency[is.na(CPU_data$Graphics_Base_Frequency)] = mean(CPU_data$Graphics_Base_Frequency, na.rm=T)
+CPU_data$Graphics_Video_Max_Memory[is.na(CPU_data$Graphics_Video_Max_Memory)] = mean(CPU_data$Graphics_Video_Max_Memory, na.rm=T)
+
+CPU_data$T[is.na(CPU_data$T)] = mean(CPU_data$T, na.rm=T)
+CPU_data$Graphics_Max_Dynamic_Frequency[is.na(CPU_data$Graphics_Max_Dynamic_Frequency)] = mean(CPU_data$Graphics_Max_Dynamic_Frequency, na.rm=T)
+CPU_data$Processor_Base_Frequency[is.na(CPU_data$Processor_Base_Frequency)] = mean(CPU_data$Processor_Base_Frequency, na.rm=T)
+
+CPU_data$Recommended_Customer_Price <- gsub("$", "", CPU_data$Recommended_Customer_Price, fixed = TRUE)
+CPU_data$Recommended_Customer_Price <- as.numeric(CPU_data$Recommended_Customer_Price)
+```
+
+We fill missing values of categorical variables by their modes.
+```{r}
+# Filling missing values for categorical variables
+fillmode <- function(column) {
+  mode_value <- names(sort(table(column), decreasing = TRUE))[1]
+  column[is.na(column)] <- mode_value
+  return(column)
+}
+
+fill_col <- c("Embedded_Options_Available","ECC_Memory_Supported","Intel_Hyper_Threading_Technology_","Intel_Virtualization_Technology_VTx_","Intel_64_","Instruction_Set","Idle_States","Thermal_Monitoring_Technologies","Secure_Key","Execute_Disable_Bit")
+
+CPU_data[fill_col] <- lapply(CPU_data[fill_col], fillmode)
+```
+
+We transform categorical variables to numeric form by using categorical signs "1" and "0". This step is conducted for training model.
+```{r}
+# Transform categorical variables to numerical variables
+CPU_data$Embedded_Options_Available <- ifelse(CPU_data$Embedded_Options_Available == "Yes", 1, 0)
+CPU_data$ECC_Memory_Supported <- ifelse(CPU_data$ECC_Memory_Supported == "Yes", 1, 0)
+CPU_data$Intel_Hyper_Threading_Technology_ <- ifelse(CPU_data$Intel_Hyper_Threading_Technology_ == "Yes", 1, 0)
+CPU_data$Intel_Virtualization_Technology_VTx_ <- ifelse(CPU_data$Intel_Virtualization_Technology_VTx_ == "Yes", 1, 0)
+CPU_data$Intel_64_ <- ifelse(CPU_data$Intel_64_ == "Yes", 1, 0)
+CPU_data$Idle_States <- ifelse(CPU_data$Idle_States == "Yes", 1, 0)
+CPU_data$Thermal_Monitoring_Technologies <- ifelse(CPU_data$Thermal_Monitoring_Technologies == "Yes", 1, 0)
+CPU_data$Secure_Key <- ifelse(CPU_data$Secure_Key == "Yes", 1, 0)
+CPU_data$Execute_Disable_Bit <- ifelse(CPU_data$Execute_Disable_Bit == "Yes", 1, 0)
+
+CPU_data$Instruction_Set <- gsub("32-bit", "0",CPU_data$Instruction_Set,fixed = TRUE)
+CPU_data$Instruction_Set <- gsub("64-bit", "1",CPU_data$Instruction_Set,fixed = TRUE)
+CPU_data$Instruction_Set <- gsub("Itanium 1", "2",CPU_data$Instruction_Set,fixed = TRUE)
+CPU_data$Instruction_Set <- as.numeric(CPU_data$Instruction_Set)
+```
+
+After all, we check missing values again.
+```{r}
+# Checking missing values
+apply(is.na(CPU_data), 2, sum)
+```
+
+Since our objective of this report is analyzing and predicting recommended customer price of CPU, Recommended_Customer_Price is the only variable has missing values after pre-processing step.
+
+**3. Data visualization**
+
+**3.1.  Descriptive statistics** 
+
+We divide CPU_data into 2 separate data CPU_learn and CPU_train, which CPU_train is the set that does not include missing values, even missing values in Recommended_Customer_Price variable.
+```{r}
+CPU_learn <- subset(CPU_data, is.na(Recommended_Customer_Price))
+CPU_train <- subset(CPU_data, !is.na(Recommended_Customer_Price))
+summary(CPU_train)
+```
+
+**3.2. Plotting graph**
+
+Using a variable to save variables of CPU_train for plotting.
+```{r}
+variables<-colnames(CPU_train)
+```
+
+**3.2.1. Histogram**
+```{r}
+# Histogram
+not_his = c("Embedded_Options_Available", "ECC_Memory_Supported", "Intel_Hyper_Threading_Technology_", "Intel_Virtualization_Technology_VTx_", "Intel_64_", "Idle_States", "Thermal_Monitoring_Technologies", "Secure_Key", "Execute_Disable_Bit", "Instruction_Set")
+his_variables <- setdiff(variables, not_his)
+
+for(var in his_variables){
+  temp <-gsub(",","", CPU_train[var]);
+  temp <-as.numeric(unlist(CPU_train[var]));
+  hist(temp,
+    main=var,
+    col = "gray",
+    xlab="Units",
+    freq = FALSE,
+    cex.main = 1
+  );
+}
+```
+
+**3.2.2. Box plot**
+```{r}
+# Box plot
+for (i in variables){
+  boxplot(CPU_train[i],
+    col="orange",
+    xlab = i,
+    cex.lab = 1,
+    title.cex = 1,
+    border="brown")
+}
+```
+
+**3.2.3. Correlation**
+```{r}
+# Correlation
+# Calculate the correlation matrix
+select <- c("Processor_Base_Frequency", "Lithography","nb_of_Cores","Max_Turbo_Frequency","Recommended_Customer_Price")
+correlation_matrix <- cor(CPU_train[select])
+
+# Plot the correlation matrix
+corrplot(correlation_matrix, method = "color", type = "upper", order = "hclust", tl.col = "black", tl.srt = 45)
+```
+
+
+
+```{r}
+# Calculate the correlation matrix
+select <- c("Max_Memory_Bandwidth",  "TDP", "Embedded_Options_Available" ,"Max_Memory_Size" ,"Recommended_Customer_Price")
+correlation_matrix <- cor(CPU_train[select])
+
+# Plot the correlation matrix
+corrplot(correlation_matrix, method = "color", type = "upper", order = "hclust", tl.col = "black", tl.srt = 45)
+```
+
+```{r}
+# Calculate the correlation matrix
+select <- c("ECC_Memory_Supported",   "Graphics_Base_Frequency",  "Graphics_Max_Dynamic_Frequency" ,"Graphics_Video_Max_Memory" ,"Recommended_Customer_Price")
+correlation_matrix <- cor(CPU_train[select])
+
+# Plot the correlation matrix
+corrplot(correlation_matrix, method = "color", type = "upper", order = "hclust", tl.col = "black", tl.srt = 45)
+```
+
+
+```{r}
+# Calculate the correlation matrix
+select <- c("T",   "Intel_Hyper_Threading_Technology_",  "Intel_Virtualization_Technology_VTx_" ,"Intel_64_","Instruction_Set"  ,"Recommended_Customer_Price")
+correlation_matrix <- cor(CPU_train[select])
+
+# Plot the correlation matrix
+corrplot(correlation_matrix, method = "color", type = "upper", order = "hclust", tl.col = "black", tl.srt = 45)
+```
+
+
+```{r}
+# Calculate the correlation matrix
+select <- c("Idle_States",   "Thermal_Monitoring_Technologies",  "Secure_Key" , "Execute_Disable_Bit"  ,"Recommended_Customer_Price")
+correlation_matrix <- cor(CPU_train[select])
+
+# Plot the correlation matrix
+corrplot(correlation_matrix, method = "color", type = "upper", order = "hclust", tl.col = "black", tl.srt = 45)
+```
+
+**4. Models building and evaluation**
+
+**4.1. Multivariate Linear Regression (MLR) and Analysis of Variance (ANOVA)**
+
+We divide CPU_train into 2 separate subsets, which are train set and test set. This is good practice for training prediction model.
+```{r}
+# Divide CPU_train into train_df and test_df
+set.seed(42)
+# Use 70% of dataset as training set and 30% as test set
+split <- sample.split(CPU_train, SplitRatio = 0.70)
+train_df <- subset(CPU_train, split == TRUE)
+test_df <- subset(CPU_train, split == FALSE)
+```
+
+We build model1 as MLR model and check fitting model.
+```{r}
+# Fitting model
+model1 <- lm(Recommended_Customer_Price~., data =train_df)
+summary(model1)
+```
+
+Since R-squared value is 0.5982, model1 is fitting. Then, we apply stepwise regression to model1 to minimize predictors and save the new model as model2.
+```{r}
+# Stepwise regression
+model2 <- stepAIC(model1, direction = "both")
+summary(model2)
+```
+
+We continue to apply ANOVA one-way. There are two hypothesis:
+
+- H0: Changing the levels of the factor has no effect on the mean.
+
+- H1: There exists the difference between the values of the factor.
+
+By using ANOVA one-way, we consider the p-value of Recommended_Customer_Price with other variables respectively. If p-value is smaller than or equal to 0.05, H0 is rejected, else, H0 is accepted.
+```{r}
+# Multi-factor ANOVA
+multiAnova <- aov(Recommended_Customer_Price ~ Lithography + nb_of_Cores + Max_Turbo_Frequency + TDP + Max_Memory_Size + Max_Memory_Bandwidth + Graphics_Base_Frequency +  Graphics_Max_Dynamic_Frequency + Graphics_Video_Max_Memory + T + Intel_Hyper_Threading_Technology_ + Intel_Virtualization_Technology_VTx_ + Intel_64_ + Instruction_Set + Idle_States, data = train_df)
+summary(multiAnova)
+```
+
+```{r}
+av_residual= rstandard(aov(Recommended_Customer_Price~.,data =CPU_train))
+shapiro.test(av_residual)
+```
+
+This data set does not have normal distribution since p-value < 0.05, it means MLR is not efficient anough. Therefore, we apply support vector machine method
+```{r}
+# Apply support vector machine
+model3 <- svm(Recommended_Customer_Price ~ Lithography + nb_of_Cores + Max_Turbo_Frequency + TDP + Max_Memory_Size + Max_Memory_Bandwidth + Graphics_Base_Frequency +  Graphics_Max_Dynamic_Frequency + Graphics_Video_Max_Memory + T + Intel_Hyper_Threading_Technology_ + Intel_Virtualization_Technology_VTx_ + Intel_64_ + Instruction_Set + Idle_States, data = train_df)
+```
+
+**4.2. Models comparison**
+
+```{r}
+anova(model1, model2)
+```
+With p-value greater than 0.05, model1 and model2 have equivalent efficiency. However, R-squared of model2 is greater than model1 (0.6009 > 0.5982), model2 is a little better than model1. Therefore, we will compare accuracy between model2 and model3
+
+```{r}
+pred_test = predict(model2, newdata = test_df)
+SSE <- sum((test_df$Recommended_Customer_Price - pred_test) ^ 2) #Sum of Squares Error
+SST <- sum((test_df$Recommended_Customer_Price - mean(test_df$Recommended_Customer_Price)) ^ 2) #Sum of Squares Total
+cat("The accuracy of the model on test dataset: ",round((1 - SSE/SST)*100,2),"%")
+
+pred_test = predict(model3, newdata = test_df)
+SSE <- sum((test_df$Recommended_Customer_Price - pred_test) ^ 2) #Sum of Squares Error
+SST <- sum((test_df$Recommended_Customer_Price - mean(test_df$Recommended_Customer_Price)) ^ 2) #Sum of Squares Total
+cat("The accuracy of the model on test dataset: ",round((1 - SSE/SST)*100,2),"%")
+```
+
+Accuracy of model3 is 62.28%, which is more than accuracy of model2 (60.32%), thus, model3 is the final model.
+
+
